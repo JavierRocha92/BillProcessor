@@ -10,6 +10,7 @@ app = Flask(__name__)
 CORS(app, expose_headers='Authorization', resources={r"/*": {"origins": "http://localhost:4200"}})
 
 
+
 app.register_blueprint(pdf_bp, url_prefix='/pdf')
 
 
