@@ -63,21 +63,40 @@ class Db():
 
 
     # Creamos una funcion para consultar los datos de una tabla
-    def insert(self, item):
+    def insert(self, item,):
         connection, cursor = self.connect()
         item_type = self.get_item_type(item)
 
         query_dict = {
             'product' : '''INSERT INTO articles(code, uds, name, weight, ud_price, price) VALUES(?,?,?,?,?,?)''',
-            'purchase': '''INSERT INTO purchase(date,code,price) VALUES(?,?,?)''',
+            'purchase': '''INSERT INTO purchase(code, date,price) VALUES(?,?,?)''',
 
         }
-
-        if (cursor.executemany(query_dict[item_type], item)):
+        if (cursor.execute(query_dict[item_type], item.to_list())):
             print('Insertion succesfully')
         else:
             print('Something went wrong')
 
+
+
+        cursor.close()
+        connection.commit()
+        connection.close()
+
+    def insert_many(self, items):
+        connection, cursor = self.connect()
+        item_type = self.get_item_type(items[0])
+        items = [item.to_list() for item in items]
+
+        query_dict = {
+            'product': '''INSERT INTO articles(code, uds, name, weight, ud_price, price) VALUES(?,?,?,?,?,?)''',
+            'purchase': '''INSERT INTO purchase(code, date,price) VALUES(?,?,?)''',
+        }
+
+        if cursor.executemany(query_dict[item_type], items):
+            print('Insertion succesfully')
+        else:
+            print('Something went wrong')
         cursor.close()
         connection.commit()
         connection.close()
