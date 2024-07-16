@@ -1,9 +1,9 @@
 from flask import Blueprint
-from app.controllers.pdf_controller import getAll
+from app.controllers.pdf_controller import insert_pdf_data as controller_insert_pdf_data
 
 
 pdf = Blueprint('pdf', __name__)
 
 @pdf.route('/', methods=['GET'])
-def save_purchase_from_pdf():
-    return getAll()
+def insert_pdf_data():
+    return controller_insert_pdf_data()

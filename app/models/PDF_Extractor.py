@@ -78,6 +78,8 @@ class PDF_Extractor():
                     return field
         return 0
     def get_udprice(self, product):
+        print('este es el prodicto')
+        print(product)
         if Product().is_weigth(product):
             return product[-3]
         else:
@@ -96,6 +98,8 @@ class PDF_Extractor():
                                             self.get_price(product)), products))
 
     def get_articles(self,lines, purchase_code):
+        product_is_in_subcategory = False
+        SUBCATGORIES = ['PESCADO']
         FIRST_LINE = 7
         FINAL_LINE = self.get_final_line(lines)
 
@@ -104,9 +108,15 @@ class PDF_Extractor():
         for line in lines[FIRST_LINE:FINAL_LINE]:
 
             product_as_list = line.split()
-            if (Product().is_weigth(product_as_list)):
-                prodcuts_data[-1] += product_as_list
-            else :
-                prodcuts_data.append(product_as_list)
+            if product_as_list[0] not in SUBCATGORIES:
+
+                if (Product().is_weigth(product_as_list)):
+                    prodcuts_data[-1] += product_as_list
+                else :
+                    prodcuts_data.append(procces_uds(product_as_list))
         return self.create_products(prodcuts_data, purchase_code)
 
+def procces_uds(product : list):
+    if not is_number(product[0][0]):
+        product[0]= '1' + product[0]
+    return product

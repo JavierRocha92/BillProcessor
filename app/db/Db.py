@@ -72,17 +72,18 @@ class Db():
             'purchase': '''INSERT INTO purchase(code, date,price) VALUES(?,?,?)''',
 
         }
-        if (cursor.execute(query_dict[item_type], item.to_list())):
-            print('Insertion succesfully')
-        else:
-            print('Something went wrong')
 
-
+        try :
+            cursor.execute(query_dict[item_type], item.to_list())
+            response = {'success': True, 'message' : 'insertion pdf data succesfully'}
+        except Exception as e:
+            print(f'esta es el error que ha ocurrido {e}')
+            response = {'success': False, 'message' : str(e)}
 
         cursor.close()
         connection.commit()
         connection.close()
-
+        return response
     def insert_many(self, items):
         connection, cursor = self.connect()
         item_type = self.get_item_type(items[0])
@@ -92,14 +93,17 @@ class Db():
             'product': '''INSERT INTO articles(code, uds, name, weight, ud_price, price) VALUES(?,?,?,?,?,?)''',
             'purchase': '''INSERT INTO purchase(code, date,price) VALUES(?,?,?)''',
         }
+        try:
+            cursor.executemany(query_dict[item_type], items)
+            response = {'success': True, 'message' : 'insertion pdf data succesfully'}
+        except Exception as e:
 
-        if cursor.executemany(query_dict[item_type], items):
-            print('Insertion succesfully')
-        else:
-            print('Something went wrong')
+            response = {'success': False, 'message' : str(e)}
+
         cursor.close()
         connection.commit()
         connection.close()
+        return response
 
     def get_item_type(self, item):
 
