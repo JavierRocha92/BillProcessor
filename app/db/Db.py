@@ -4,7 +4,7 @@ import sqlite3
 #import processor as proc
 from app.models.Product import Product
 from app.models.Purchase import Purchase
-
+from app.models.User import User
 class Db():
     def __init__(self):
         pass
@@ -42,12 +42,17 @@ class Db():
                             ud_price FLOAT(2,2) NOT NULL,
                             price FLOAT(2,2) NOT NULL,
                             PRIMARY KEY (code, name),
-                            FOREIGN KEY (code) REFERENCES purchase(code)
+                            FOREIGN KEY (code) REFERENCES purchases(code) ON DELETE CASCADE
                                 )''',
-            'purchase' : '''CREATE TABLE IF NOT EXISTS purchase (
+            'purchase' : '''CREATE TABLE IF NOT EXISTS purchases (
                                 code INTEGER PRIMARY KEY NOT NULL,
                                 date VARCHAR(16) NOT NULL,
                                 price FLOAT(2,2) NOT NULL
+                                   )''',
+            'user' : '''CREATE TABLE IF NOT EXISTS users (
+                                code INTEGER PRIMARY KEY NOT NULL,
+                                email VARCHAR(100) NOT NULL,
+                                password FLOAT(30) NOT NULL
                                    )'''
         }
         connection, cursor = self.connect()
@@ -63,14 +68,14 @@ class Db():
 
 
     # Creamos una funcion para consultar los datos de una tabla
-    def insert(self, item,):
+    def insert(self, item):
         connection, cursor = self.connect()
         item_type = self.get_item_type(item)
 
         query_dict = {
             'product' : '''INSERT INTO articles(code, uds, name, weight, ud_price, price) VALUES(?,?,?,?,?,?)''',
-            'purchase': '''INSERT INTO purchase(code, date,price) VALUES(?,?,?)''',
-
+            'purchase': '''INSERT INTO purchases(code, date,price) VALUES(?,?,?)''',
+            'user': '''INSERT INTO users (email, password) VALUES(?,?)''',
         }
 
         try :
@@ -91,7 +96,7 @@ class Db():
 
         query_dict = {
             'product': '''INSERT INTO articles(code, uds, name, weight, ud_price, price) VALUES(?,?,?,?,?,?)''',
-            'purchase': '''INSERT INTO purchase(code, date,price) VALUES(?,?,?)''',
+            'purchase': '''INSERT INTO purchases(code, date,price) VALUES(?,?,?)''',
         }
         try:
             cursor.executemany(query_dict[item_type], items)
@@ -111,6 +116,8 @@ class Db():
             return 'product'
         if (isinstance(item, Purchase)):
             return 'purchase'
+        if(isinstance(item, User)):
+            return 'user'
 
 
     # Creamos una funcion para encontrar el articulo mas caro de las compras segun el precio de la unidad
@@ -157,7 +164,7 @@ class Db():
 
     def totalPrice(self):
         price = self.run_query('''
-        SELECT ROUND(SUM(price),2) FROM PURCHASE ''')
+        SELECT ROUND(SUM(price),2) FROM purchases ''')
 
         # mostramos por pantalla la consulta que hemos recibido
 
@@ -184,9 +191,9 @@ class Db():
         # guardamos lo que nos devuelven las consultas rn variables para poder operar con ellas
 
         monthAmount = self.run_query(f'''
-                 SELECT round(sum(price),2)  FROM purchase WHERE strftime('%m', date) = "{month}"''')
+                 SELECT round(sum(price),2)  FROM purchases WHERE strftime('%m', date) = "{month}"''')
         yearAmount = self.run_query('''
-                 SELECT SUM(price),COUNT(*) FROM purchase''')
+                 SELECT SUM(price),COUNT(*) FROM purchases''')
         # realizmos la consulta con la fucnion que se puede ver a continuacion ya que es la indicada para procesar dates que estan guardadads como varchar en formato ISO
         print(f'El precio gastado en el mes : {months[int(month) - 1]} es de :',
               monthAmount[0][0],

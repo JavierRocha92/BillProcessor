@@ -78,8 +78,7 @@ class PDF_Extractor():
                     return field
         return 0
     def get_udprice(self, product):
-        print('este es el prodicto')
-        print(product)
+
         if Product().is_weigth(product):
             return product[-3]
         else:

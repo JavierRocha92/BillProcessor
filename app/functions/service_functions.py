@@ -4,7 +4,6 @@ from email.header import decode_header
 import os
 from datetime import datetime
 from ..config.credentials import EMAIL_CREDENTIALS
-
 def is_number(number : str):
     return number.replace(',','').isdigit()
 
@@ -34,7 +33,7 @@ def get_unseen_emails():
     end_date = "02-dec-2023"
 
     # Buscar correos electrónicos desde el 1 de julio hasta el 31 de julio
-    status, messages = mail.search(None, f'(FROM "{DESIRED_SENDER}" SINCE {start_date} BEFORE {end_date})')
+    status, messages = mail.search(None, f'(FROM "{DESIRED_SENDER}")')
 
     # Obtener la lista de IDs de los correos no leídos
     mail_ids = messages[0].split()
