@@ -1,9 +1,9 @@
 import imaplib
 import email
-from email.header import decode_header
 import os
-from datetime import datetime
 from ..config.credentials import EMAIL_CREDENTIALS
+from ..db.Db import Db
+
 def is_number(number : str):
     return number.replace(',','').isdigit()
 
@@ -26,11 +26,6 @@ def get_unseen_emails():
 
     # Seleccionar la bandeja de entrada
     mail.select("inbox")
-
-    # Definir las fechas de inicio y fin para julio
-
-    start_date = "17-jul-2023"
-    end_date = "02-dec-2023"
 
     # Buscar correos electrónicos desde el 1 de julio hasta el 31 de julio
     status, messages = mail.search(None, f'(FROM "{DESIRED_SENDER}")')
@@ -76,6 +71,67 @@ def get_unseen_emails():
     mail.logout()
 
     return nombres_archivos_guardados
+
+
+
+def findExpensive():
+    query = '''
+    SELECT name,AVG(price) precio_medio FROM ARTICLES WHERE name = (SELECT name FROM ARTICLES WHERE PRICE = 
+    (SELECT MAX(price) FROM ARTICLES))'''
+    article = Db().run_query(query)
+
+    return {'product': article[0][0], 'price' : article[0][1]}
+# Creamos una funcion para encontrar el articulo que mas dinero ha sido gastado en todas las compra
+def findExpensiveAmount():
+    query = '''
+    SELECT name,ROUND(SUM(price),2) FROM ARTICLES GROUP BY name HAVING SUM(price) = 
+    (SELECT MAX(total) FROM (SELECT SUM(price) AS total FROM ARTICLES GROUP BY name))'''
+    article = Db().run_query(query)
+    # mostramos por pantalla el articulo en el que mas dinero se ha gastad
+
+    return {'product': article[0][0], 'price': article[0][1]}
+# Creamos una funcion para encontrar el articulo que mas ha sido comprad
+def findMostOrdered():
+    # Llamamos a metodo de consulta para buscar el articulo que mas ha sido comprado
+    article = Db().run_query('''
+    SELECT name,SUM(uds) FROM ARTICLES GROUP BY name HAVING SUM(uds) = 
+    (SELECT MAX(total) FROM (SELECT SUM(uds) AS total FROM ARTICLES GROUP BY name))''')
+    # mostramos por pantalla el articulo mas comprad
+    return {'product': article[0][0], 'uds' : article[0][1]}
+# Metodo para calcular el precio historico de todas las compra
+def totalPrice():
+    price = Db().run_query('''
+    SELECT ROUND(SUM(price),2) FROM purchases ''')
+    # mostramos por pantalla la consulta que hemos recibid
+    return {'price' : price[0][0]}
+# Metodo para sacar el precio total de un mes y el precio media respecto al añ
+def priceFilterMonth(month):
+    # declaramos una lista con los nombres de los mese para mostrar la salida por pantall
+    months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre',
+              'Noviembre', 'Diciembre']
+    # pasamos en valor de month a tipo string para poder trabajar con e
+    month = str(month)
+    # vamos a porcesar la varibale month para saber si tiene o no dos unidades para añadirle un cero el principio si solo tuviera un
+    if len(month) == 1:
+        month = '0' + month
+    # guardamos lo que nos devuelven las consultas rn variables para poder operar con ella
+    monthAmount = Db().run_query(f'''
+             SELECT round(sum(price),2)  FROM purchases WHERE strftime('%m', date) = "{month}"''')
+    yearAmount = Db().run_query('''
+             SELECT SUM(price),COUNT(*) FROM purchases''')
+    # realizmos la consulta con la fucnion que se puede ver a continuacion ya que es la indicada para procesar dates que estan guardadads como varchar en formato ISO
+    print(f'El precio gastado en el mes : {months[int(month) - 1]} es de :',
+          monthAmount[0][0],
+          '€ el precio gastado en el año hasta ahora es de :',
+          yearAmount[0][0],
+          '€ el precio medio de gasto por compra en lo que va de año es de : ',
+          round(float(yearAmount[0][0]) / float(yearAmount[0][1]), 2), ' €')
+
+    # metodo para mostrar los prodcutos de una compra especifica en funcion de una fecha prporcionada
+
+
+
+
 
 
 
