@@ -1,16 +1,56 @@
-
-from ..db.Db import Db
-import json
-import requests
-from bs4 import BeautifulSoup
-
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.common.action_chains import ActionChains
 import time
+import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from bs4 import BeautifulSoup
+import json
 
-def search_product(market : str, product : str) -> str:
+SUPERMARKET_HEAD_URL = {
+    'ahorramas': 'https://www.ahorramas.com', #V un poco lento
+    'carrefour': 'https://www.carrefour.es', #V
+    'dia': '', #V
+    'mercadona': '', #V
+    'lidl': 'https://www.lidl.es/es/', #F no tiene un buscador de alimentos real
+    'aldi': '' #V
+}
+
+MARKET_CONTAINER_CLASS = {
+    'ahorramas': 'row product-grid',
+    'carrefour': '',
+    'dia': '',
+    'mercadona': '',
+    'lidl': '',
+    'aldi': ''
+}
+
+
+def search_product(product : str) -> str:
+    SUPERMARKETS = ['mercadona', 'ahorramas','dia','carrefour','lidl','aldi']
+
+    results = {}
+    with ThreadPoolExecutor(max_workers=len(SUPERMARKETS)) as executor:
+        future_to_market = {executor.submit(search_product_by_market, market, product): market for market in
+                            SUPERMARKETS}
+        for future in as_completed(future_to_market):
+            market = future_to_market[future]
+            try:
+                data = future.result()
+                results[market] = json.loads(data)
+            except Exception as exc:
+                print(f'{market} generated an exception: {exc}')
+    for market_name, market_products in results.items():
+        print(f'este es el market {market_name}')
+        print('estos son los productos')
+        for p in market_products:
+            print(p)
+    return 'hola'
+    #return results
+
+def search_product_by_market(market : str, product : str) -> str:
     url = get_url_by_market(market, product)
     headers = {
         'Accept': '*/*',
@@ -29,35 +69,75 @@ def search_product(market : str, product : str) -> str:
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
     }
 
-    driver = webdriver.Chrome()
-    driver.get(url)
-    time.sleep(3)
-
-    contenido = driver.page_source
-
-    driver.quit()
-
-    soup = BeautifulSoup(contenido, 'html.parser')
-
-    MARKET_FUNCTIONS = {
-        'ahorramas': get_product_info_ahorramas(soup),
-        'carrefour': get_product_info_carrefour(soup),
-        'dia': get_product_info_dia(soup),
-        'mercadona': get_product_info_mercadona(soup),
-        'lidl': get_product_info_lidl(soup),
-        'aldi': get_product_info_aldi(soup)
+    MARKET_METHOD_INFO_EXTRACTION = {
+        'ahorramas': request_get_with_headers,
+        'carrefour': driver_get,
+        'dia': request_get_with_headers,
+        'mercadona': driver_get,
+        'lidl': driver_get,
+        'aldi': driver_get
     }
 
-    # TODO para cada funcion debemos de poner una cabeza para la url de los links que solo tienen la parte sin la cabecera de la url
+    if market in ['ahorramas', 'dia']:
+        response = MARKET_METHOD_INFO_EXTRACTION[market](url, headers)
+    else:
+        response = MARKET_METHOD_INFO_EXTRACTION[market](url)
 
-    #TODO crear metodo para devolver las cabecera de las url de la imagen ya que vienen en relativo
-    products = MARKET_FUNCTIONS[market]
+    time.sleep(1)
+
+    soup = get_html_soup(response, market)
+
+    MARKET_FUNCTIONS = {
+        'ahorramas': get_product_info_ahorramas,
+        'carrefour': get_product_info_carrefour,
+        'dia': get_product_info_dia,
+        'mercadona': get_product_info_mercadona,
+        'lidl': get_product_info_lidl,
+        'aldi': get_product_info_aldi
+    }
+
+
+    products = MARKET_FUNCTIONS[market](market, soup)
 
 
     return json.dumps(products)
 
 
+def request_get_with_headers(url, headers):
+    return requests.get(url, headers=headers)
 
+def driver_get(url):
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--no-sandbox")
+
+    prefs = {
+        "profile.managed_default_content_settings.images": 2,
+        "profile.managed_default_content_settings.stylesheets": 2,
+        "profile.managed_default_content_settings.javascript": 2,
+        "profile.managed_default_content_settings.plugins": 2,
+        "profile.managed_default_content_settings.popups": 2,
+        "profile.managed_default_content_settings.geolocation": 2,
+        "profile.managed_default_content_settings.notifications": 2,
+        "profile.managed_default_content_settings.automatic_downloads": 2
+    }
+    chrome_options.add_experimental_option("prefs", prefs)
+
+    # Crear una instancia del navegador
+    driver = webdriver.Chrome(options=chrome_options)
+    page_souce = driver.get(url)
+    driver.quit()
+    return page_souce
+
+
+def get_html_soup(response, market : str):
+    if market == 'dia' or market == 'ahorramas':
+        content = response.content
+    else:
+        content = driver.page_source
+
+    return BeautifulSoup(content, 'html.parser')
 def get_url_by_market(market : str, product : str):
     SUPERMATKETS = {
         'ahorramas' : f'https://www.ahorramas.com/buscador?q={get_processed_product(product)}&search-button=&lang=null',
@@ -80,7 +160,7 @@ def get_merged_product_name(product_name : str, product_info : list):
 def get_processed_product(product : str) -> str:
     return product.replace(' ', '+')
 
-def get_product_info_ahorramas(soup):
+def get_product_info_ahorramas(market, soup):
     products = []
 
     for product in soup.find_all('div', class_='product'):
@@ -89,13 +169,12 @@ def get_product_info_ahorramas(soup):
             'name': get_tag_info(product.find('h2', class_='link product-name-gtm')),
             'price': get_tag_info(product.find('span', class_='value')),
             'image': get_tag_info(product.find('img', class_='tile-image')),
-            'link': get_tag_info(product.find('a', class_='product-pdp-link')),
+            'link': SUPERMARKET_HEAD_URL[market] + get_tag_info(product.find('a', class_='product-pdp-link')),
             'price_kg': get_tag_info(product.find('span', class_='unit-price-per-unit'))
         })
     return products
 
-def get_product_info_dia(soup):
-
+def get_product_info_dia(market, soup):
     products = []
     product = soup.find('script', id='vike_pageContext')
     if product:
@@ -118,12 +197,9 @@ def get_product_info_dia(soup):
 
     return products
 
-def get_product_info_mercadona(soup):
+def get_product_info_mercadona(market, soup):
     products = []
-
-
     for product in soup.find_all('div', class_='product-cell'):
-
 
         products.append({
             'name': get_merged_product_name(
@@ -138,7 +214,7 @@ def get_product_info_mercadona(soup):
 
     return products
 
-def get_product_info_carrefour(soup):
+def get_product_info_carrefour(market, soup):
 
     products = []
     for product in soup.find_all('div', class_='ebx-result__wrapper'):
@@ -147,30 +223,29 @@ def get_product_info_carrefour(soup):
             'name': get_tag_info(product.find('h1', class_='ebx-result-title ebx-result__title')),
             'price': get_tag_info(product.find('strong', class_='ebx-result-price__value')),
             'image': get_tag_info(product.find('img', class_='ebx-result-figure__img')),
-            'link': get_tag_info(product.find('a', class_='ebx-result-link')),
+            'link': SUPERMARKET_HEAD_URL[market] + get_tag_info(product.find('a', class_='ebx-result-link')),
             'price_kg': get_tag_info(product.find('span'))
         })
     return products
 
-def get_product_info_lidl(soup):
+def get_product_info_lidl(market, soup):
     #TODO en el caso de lidl estamos cogiendo la info para web, para cogerla para phone debemos coger la ingo del div con la clase 'space c-10 p-r p-b product-grid-box-tile__wrapper show-phone'
     products = []
+    print(soup.find_all('section', class_='space p-r p-b hide-phone'))
     for product in soup.find_all('section', class_='space p-r p-b hide-phone'):
         products.append({
             'name': get_tag_info(product.find('strong')),
             'price': get_tag_info(product.find('span', class_='price-pill--strikethrough')),
             'image': get_tag_info(product.find('img')),
-            'link': get_tag_info(product.find('a', class_='track-impression')),
+            'link': SUPERMARKET_HEAD_URL[market] + get_tag_info(product.find('a', class_='track-impression')),
             'price_kg': get_tag_info(product.find('small', class_='baseprice'))
         })
     return products
 
-def get_product_info_aldi(soup):
+def get_product_info_aldi(market, soup):
 
     products = []
     for product in soup.find_all('div', class_='mod-article-tile'):
-        print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
-        print(product)
 
         products.append({
             'name': get_merged_product_name(
