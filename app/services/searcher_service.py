@@ -9,6 +9,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
 import json
 
+
 SUPERMARKET_HEAD_URL = {
     'ahorramas': 'https://www.ahorramas.com', #V un poco lento
     'carrefour': 'https://www.carrefour.es', #V
@@ -47,7 +48,7 @@ def search_product(product : str) -> str:
         print('estos son los productos')
         for p in market_products:
             print(p)
-    return 'hola'
+    return 'response'
     #return results
 
 def search_product_by_market(market : str, product : str) -> str:
@@ -75,17 +76,15 @@ def search_product_by_market(market : str, product : str) -> str:
         'dia': request_get_with_headers,
         'mercadona': driver_get,
         'lidl': driver_get,
-        'aldi': driver_get
+        'aldi': request_get_with_headers
     }
 
-    if market in ['ahorramas', 'dia']:
-        response = MARKET_METHOD_INFO_EXTRACTION[market](url, headers)
+
+    if market in ['ahorramas', 'dia', 'aldi']:
+        soup = MARKET_METHOD_INFO_EXTRACTION[market](market, url, headers)
     else:
-        response = MARKET_METHOD_INFO_EXTRACTION[market](url)
+        soup = MARKET_METHOD_INFO_EXTRACTION[market](market, url)
 
-    time.sleep(1)
-
-    soup = get_html_soup(response, market)
 
     MARKET_FUNCTIONS = {
         'ahorramas': get_product_info_ahorramas,
@@ -103,15 +102,17 @@ def search_product_by_market(market : str, product : str) -> str:
     return json.dumps(products)
 
 
-def request_get_with_headers(url, headers):
-    return requests.get(url, headers=headers)
+def request_get_with_headers(market, url, headers):
+    response =  requests.get(url, headers=headers)
+    soup = get_html_soup(response, market)
+    return soup
 
-def driver_get(url):
+def driver_get(market, url):
+    time.sleep(1)
     chrome_options = Options()
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--no-sandbox")
-
     prefs = {
         "profile.managed_default_content_settings.images": 2,
         "profile.managed_default_content_settings.stylesheets": 2,
@@ -123,16 +124,15 @@ def driver_get(url):
         "profile.managed_default_content_settings.automatic_downloads": 2
     }
     chrome_options.add_experimental_option("prefs", prefs)
-
-    # Crear una instancia del navegador
     driver = webdriver.Chrome(options=chrome_options)
     page_souce = driver.get(url)
+    soup = get_html_soup(page_souce, market, driver)
     driver.quit()
-    return page_souce
+    return soup
 
 
-def get_html_soup(response, market : str):
-    if market == 'dia' or market == 'ahorramas':
+def get_html_soup(response, market : str, driver = None):
+    if market == 'dia' or market == 'ahorramas' or market == 'aldi':
         content = response.content
     else:
         content = driver.page_source
@@ -231,7 +231,7 @@ def get_product_info_carrefour(market, soup):
 def get_product_info_lidl(market, soup):
     #TODO en el caso de lidl estamos cogiendo la info para web, para cogerla para phone debemos coger la ingo del div con la clase 'space c-10 p-r p-b product-grid-box-tile__wrapper show-phone'
     products = []
-    print(soup.find_all('section', class_='space p-r p-b hide-phone'))
+
     for product in soup.find_all('section', class_='space p-r p-b hide-phone'):
         products.append({
             'name': get_tag_info(product.find('strong')),
