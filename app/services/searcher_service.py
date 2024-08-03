@@ -12,45 +12,130 @@ from selenium.webdriver.common.by import By
 
 import json
 
-chrome_options = Options()
-chrome_options.add_argument("--headless")
-chrome_options.add_argument("--disable-gpu")
-chrome_options.add_argument("--no-sandbox")
-chrome_options.add_argument("--disable-extensions")
-chrome_options.add_argument("--disable-dev-shm-usage")
-prefs = {
-    "profile.managed_default_content_settings.images": 2,
-    "profile.managed_default_content_settings.stylesheets": 2,
-    "profile.managed_default_content_settings.javascript": 2,
-    "profile.managed_default_content_settings.plugins": 2,
-    "profile.managed_default_content_settings.popups": 2,
-    "profile.managed_default_content_settings.geolocation": 2,
-    "profile.managed_default_content_settings.notifications": 2,
-    "profile.managed_default_content_settings.automatic_downloads": 2
-}
-chrome_options.add_experimental_option("prefs", prefs)
-driver = webdriver.Chrome(options=chrome_options)
+
 
 SUPERMARKET_HEAD_URL = {
-    'ahorramas': 'https://www.ahorramas.com', #V un poco lento
+    'ahorramas': 'https://www.ahorramas.com', #V
     'carrefour': 'https://www.carrefour.es', #V
     'dia': '', #V
     'mercadona': '', #V
-    'lidl': 'https://www.lidl.es/es/', #F no tiene un buscador de alimentos real
+    'lidl': 'https://www.lidl.es/es/', #V
     'aldi': '' #V
 }
 
 
 
+driver = None
+
+def initialize_driver():
+    global driver
+    if driver is None:
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-extensions")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        prefs = {
+            "profile.managed_default_content_settings.images": 2,
+            "profile.managed_default_content_settings.stylesheets": 2,
+            "profile.managed_default_content_settings.javascript": 2,
+            "profile.managed_default_content_settings.plugins": 2,
+            "profile.managed_default_content_settings.popups": 2,
+            "profile.managed_default_content_settings.geolocation": 2,
+            "profile.managed_default_content_settings.notifications": 2,
+            "profile.managed_default_content_settings.automatic_downloads": 2
+        }
+        chrome_options.add_experimental_option("prefs", prefs)
+        driver = webdriver.Chrome(options=chrome_options)
+    return driver
+
+def close_driver():
+    global driver
+    if driver:
+        driver.quit()
+        driver = None
 
 
+def search_product(product):
+    SUPERMARKETS = ['mercadona', 'ahorramas', 'dia', 'carrefour', 'lidl', 'aldi']
+    results = {}
 
-def search_product(product : str) -> str:
+    try:
+        for market in SUPERMARKETS:
+            print(f'extraccion de {market}')
+
+            start_time = time.time()
+            data = search_product_by_market(market, product)
+            results[market] = json.loads(data)
+            show_time(start_time, f'extraccon de{market}')
+    except Exception as exc:
+        print(f'Generated an exception: {exc}')
+
+    finally:
+        close_driver()
+
+    for name in results.items():
+        print(name)
+        print(product)
+
+    return json.dumps(results)
+def search_product_by_market(market, product):
+    initialize_driver()
+    url = get_url_by_market(market, product)
+    headers = {
+        'Accept': '*/*',
+        'Accept-Encoding': 'gzip, deflate, br, zstd',
+        'Accept-Language': 'es-ES,es;q=0.9',
+        'Access-Control-Request-Headers': 'content-type',
+        'Access-Control-Request-Method': 'POST',
+        'Cache-Control': 'no-cache',
+        'Origin': 'https://www.dia.es',
+        'Pragma': 'no-cache',
+        'Priority': 'u=1, i',
+        'Referer': 'https://www.dia.es/search?q=pechuga%20de%20pollo',
+        'Sec-Fetch-Dest': 'empty',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Site': 'cross-site',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
+    }
+
+    MARKET_METHOD_INFO_EXTRACTION = {
+        'ahorramas': request_get_with_headers,
+        'carrefour': driver_get,
+        'dia': request_get_with_headers,
+        'mercadona': driver_get,
+        'lidl': driver_get,
+        'aldi': driver_get
+    }
+
+    if market in ['ahorramas', 'dia']:
+        soup = MARKET_METHOD_INFO_EXTRACTION[market](market, url, headers)
+    else:
+        start_time = time.time()
+        soup = MARKET_METHOD_INFO_EXTRACTION[market](market, url)
+        show_time(start_time, 'extraccion de soup')
+
+    MARKET_FUNCTIONS = {
+        'ahorramas': get_product_info_ahorramas,
+        'carrefour': get_product_info_carrefour,
+        'dia': get_product_info_dia,
+        'mercadona': get_product_info_mercadona,
+        'lidl': get_product_info_lidl,
+        'aldi': get_product_info_aldi
+    }
+
+    products = MARKET_FUNCTIONS[market](market, soup)
+    return json.dumps(products)
+def search_product__old(product : str) -> str:
     SUPERMARKETS = ['mercadona', 'ahorramas','dia','carrefour','lidl','aldi']
     results = {}
-    time_to_sleep = 3
     with ThreadPoolExecutor(max_workers=len(SUPERMARKETS)) as executor:
-        future_to_market = {executor.submit(search_product_by_market, market, product, time_to_sleep ): market for market in
+        # Inicializar navegadores para cada mercado
+        for market in SUPERMARKETS:
+            initialize_driver(market, product)
+
+        future_to_market = {executor.submit(search_product_by_market, market, product): market for market in
                             SUPERMARKETS}
         for future in as_completed(future_to_market):
             market = future_to_market[future]
@@ -59,13 +144,14 @@ def search_product(product : str) -> str:
                 results[market] = json.loads(data)
             except Exception as exc:
                 print(f'{market} generated an exception: {exc}')
-    for name in results.items():
-        print(name)
-        print(product)
+
+
+    # Cerrar todos los navegadores al final
+    close_driver()
 
     return json.dumps(results)
 
-def search_product_by_market(market : str, product : str, time_to_sleep : int) -> str:
+def search_product_by_market__old(market : str, product : str) -> str:
     url = get_url_by_market(market, product)
     headers = {
         'Accept': '*/*',
@@ -98,7 +184,6 @@ def search_product_by_market(market : str, product : str, time_to_sleep : int) -
         soup = MARKET_METHOD_INFO_EXTRACTION[market](market, url, headers)
     else:
         start_time = time.time()
-        #time.sleep(time_to_sleep)
         soup = MARKET_METHOD_INFO_EXTRACTION[market](market, url)
         show_time(start_time, 'extraccion de soup')
 
@@ -111,10 +196,8 @@ def search_product_by_market(market : str, product : str, time_to_sleep : int) -
         'aldi': get_product_info_aldi
     }
 
-    start_time = time.time()
     products = MARKET_FUNCTIONS[market](market, soup)
-    show_time(start_time, 'devolucino de los datos')
-
+    driver.quit()
     return json.dumps(products)
 
 def show_time(start_time, function_name):
@@ -142,17 +225,11 @@ def get_selector_by_market(market : str):
 
 def driver_get(market, url):
 
-    start_time = time.time()
     page_souce = driver.get(url)
-    show_time(start_time, 'get url')
 
     wait = WebDriverWait(driver, 20)  # Esperar hasta 20 segundos
     wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, get_selector_by_market(market))))
-    #time.sleep(5)
-    start_time = time.time()
     soup = get_html_soup(page_souce, market, driver)
-
-    show_time(start_time, 'get soup')
 
     return soup
 
