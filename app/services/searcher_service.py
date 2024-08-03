@@ -1,14 +1,35 @@
 import time
 import requests
+from bs4 import BeautifulSoup
+
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
+
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from bs4 import BeautifulSoup
+from selenium.webdriver.common.by import By
+
 import json
 
+chrome_options = Options()
+chrome_options.add_argument("--headless")
+chrome_options.add_argument("--disable-gpu")
+chrome_options.add_argument("--no-sandbox")
+chrome_options.add_argument("--disable-extensions")
+chrome_options.add_argument("--disable-dev-shm-usage")
+prefs = {
+    "profile.managed_default_content_settings.images": 2,
+    "profile.managed_default_content_settings.stylesheets": 2,
+    "profile.managed_default_content_settings.javascript": 2,
+    "profile.managed_default_content_settings.plugins": 2,
+    "profile.managed_default_content_settings.popups": 2,
+    "profile.managed_default_content_settings.geolocation": 2,
+    "profile.managed_default_content_settings.notifications": 2,
+    "profile.managed_default_content_settings.automatic_downloads": 2
+}
+chrome_options.add_experimental_option("prefs", prefs)
+driver = webdriver.Chrome(options=chrome_options)
 
 SUPERMARKET_HEAD_URL = {
     'ahorramas': 'https://www.ahorramas.com', #V un poco lento
@@ -19,22 +40,17 @@ SUPERMARKET_HEAD_URL = {
     'aldi': '' #V
 }
 
-MARKET_CONTAINER_CLASS = {
-    'ahorramas': 'row product-grid',
-    'carrefour': '',
-    'dia': '',
-    'mercadona': '',
-    'lidl': '',
-    'aldi': ''
-}
+
+
+
 
 
 def search_product(product : str) -> str:
     SUPERMARKETS = ['mercadona', 'ahorramas','dia','carrefour','lidl','aldi']
-
     results = {}
+    time_to_sleep = 3
     with ThreadPoolExecutor(max_workers=len(SUPERMARKETS)) as executor:
-        future_to_market = {executor.submit(search_product_by_market, market, product): market for market in
+        future_to_market = {executor.submit(search_product_by_market, market, product, time_to_sleep ): market for market in
                             SUPERMARKETS}
         for future in as_completed(future_to_market):
             market = future_to_market[future]
@@ -43,15 +59,13 @@ def search_product(product : str) -> str:
                 results[market] = json.loads(data)
             except Exception as exc:
                 print(f'{market} generated an exception: {exc}')
-    for market_name, market_products in results.items():
-        print(f'este es el market {market_name}')
-        print('estos son los productos')
-        for p in market_products:
-            print(p)
-    return 'response'
-    #return results
+    for name in results.items():
+        print(name)
+        print(product)
 
-def search_product_by_market(market : str, product : str) -> str:
+    return json.dumps(results)
+
+def search_product_by_market(market : str, product : str, time_to_sleep : int) -> str:
     url = get_url_by_market(market, product)
     headers = {
         'Accept': '*/*',
@@ -76,15 +90,17 @@ def search_product_by_market(market : str, product : str) -> str:
         'dia': request_get_with_headers,
         'mercadona': driver_get,
         'lidl': driver_get,
-        'aldi': request_get_with_headers
+        'aldi': driver_get
     }
 
 
-    if market in ['ahorramas', 'dia', 'aldi']:
+    if market in ['ahorramas', 'dia']:
         soup = MARKET_METHOD_INFO_EXTRACTION[market](market, url, headers)
     else:
+        start_time = time.time()
+        #time.sleep(time_to_sleep)
         soup = MARKET_METHOD_INFO_EXTRACTION[market](market, url)
-
+        show_time(start_time, 'extraccion de soup')
 
     MARKET_FUNCTIONS = {
         'ahorramas': get_product_info_ahorramas,
@@ -95,44 +111,54 @@ def search_product_by_market(market : str, product : str) -> str:
         'aldi': get_product_info_aldi
     }
 
-
+    start_time = time.time()
     products = MARKET_FUNCTIONS[market](market, soup)
-
+    show_time(start_time, 'devolucino de los datos')
 
     return json.dumps(products)
 
+def show_time(start_time, function_name):
+    end_time = time.time()
+
+    # Calcular el tiempo transcurrido
+    print(f'este es el tiempo que tarda la funcion de {function_name} --> {end_time - start_time}')
 
 def request_get_with_headers(market, url, headers):
     response =  requests.get(url, headers=headers)
     soup = get_html_soup(response, market)
     return soup
 
-def driver_get(market, url):
-    time.sleep(1)
-    chrome_options = Options()
-    chrome_options.add_argument("--headless")
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--no-sandbox")
-    prefs = {
-        "profile.managed_default_content_settings.images": 2,
-        "profile.managed_default_content_settings.stylesheets": 2,
-        "profile.managed_default_content_settings.javascript": 2,
-        "profile.managed_default_content_settings.plugins": 2,
-        "profile.managed_default_content_settings.popups": 2,
-        "profile.managed_default_content_settings.geolocation": 2,
-        "profile.managed_default_content_settings.notifications": 2,
-        "profile.managed_default_content_settings.automatic_downloads": 2
+
+def get_selector_by_market(market : str):
+    MARKET_SELECTORS = {
+        'ahorramas': '',
+        'carrefour': 'section.ebx-grid',
+        'dia': '',
+        'mercadona': 'div.product-container',
+        'lidl': 'div.grid-item-container',
+        'aldi': 'div.tiles-grid'
     }
-    chrome_options.add_experimental_option("prefs", prefs)
-    driver = webdriver.Chrome(options=chrome_options)
+    return MARKET_SELECTORS[market]
+
+def driver_get(market, url):
+
+    start_time = time.time()
     page_souce = driver.get(url)
+    show_time(start_time, 'get url')
+
+    wait = WebDriverWait(driver, 20)  # Esperar hasta 20 segundos
+    wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, get_selector_by_market(market))))
+    #time.sleep(5)
+    start_time = time.time()
     soup = get_html_soup(page_souce, market, driver)
-    driver.quit()
+
+    show_time(start_time, 'get soup')
+
     return soup
 
 
 def get_html_soup(response, market : str, driver = None):
-    if market == 'dia' or market == 'ahorramas' or market == 'aldi':
+    if market == 'dia' or market == 'ahorramas':
         content = response.content
     else:
         content = driver.page_source
@@ -231,6 +257,7 @@ def get_product_info_carrefour(market, soup):
 def get_product_info_lidl(market, soup):
     #TODO en el caso de lidl estamos cogiendo la info para web, para cogerla para phone debemos coger la ingo del div con la clase 'space c-10 p-r p-b product-grid-box-tile__wrapper show-phone'
     products = []
+
 
     for product in soup.find_all('section', class_='space p-r p-b hide-phone'):
         products.append({
